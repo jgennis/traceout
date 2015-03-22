@@ -187,11 +187,11 @@ func printkFunctionPointerOffset(ctx cparse.EvalContext, args []cparse.Value) cp
 	e := ctx.(Event)
 
 	if len(args) != 1 {
-		return cparse.NewValueError("expected 1 argument to __printk_pf")
+		return cparse.NewValueError("expected 1 argument to __printk_pF")
 	}
 
 	if !args[0].IsInt() {
-		return cparse.NewValueError("expected integer as first argument to __printk_pf")
+		return cparse.NewValueError("expected integer as first argument to __printk_pF")
 	}
 	addr := uint64(args[0].AsInt())
 

@@ -15,6 +15,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -25,6 +27,7 @@ import (
 	"time"
 
 	"github.com/google/traceout/ftrace"
+	"github.com/google/traceout/usertrace"
 )
 
 import _ "net/http/pprof"
@@ -102,20 +105,21 @@ func do_main() error {
 	f.Clear()
 
 	eventNames := []string{
+		"ftrace/print",
 		"sched/sched_switch",
 		"sched/sched_wakeup",
 		"task/task_newtask",
-		"irq/irq_handler_entry",
-		"irq/irq_handler_exit",
-		"irq/softirq_entry",
-		"irq/softirq_exit",
-		"irq/softirq_raise",
-		"workqueue/workqueue_activate_work",
-		"workqueue/workqueue_execute_start",
-		"workqueue/workqueue_execute_end",
-		"workqueue/workqueue_queue_work",
-		"power/cpu_frequency",
-		"power/cpu_idle",
+		//"irq/irq_handler_entry",
+		//"irq/irq_handler_exit",
+		//"irq/softirq_entry",
+		//"irq/softirq_exit",
+		//"irq/softirq_raise",
+		// "workqueue/workqueue_activate_work",
+		// "workqueue/workqueue_execute_start",
+		// "workqueue/workqueue_execute_end",
+		// "workqueue/workqueue_queue_work",
+		// "power/cpu_frequency",
+		// "power/cpu_idle",
 		"vmscan/mm_vmscan_direct_reclaim_begin",
 		"vmscan/mm_vmscan_direct_reclaim_end",
 		"vmscan/mm_vmscan_kswapd_sleep",
@@ -179,12 +183,48 @@ func do_main() error {
 
 	if !test {
 		f.Enable()
+
+		now := usertrace.Now() / 1000000
+		msg := fmt.Sprintf("trace_event_clock_sync: parent_ts=%f", now)
+		err = fp.WriteFtraceFile("trace_marker", []byte(msg))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error writing clock sync marker: %s", err)
+			os.Exit(1)
+		}
+
+		var events ftrace.Events
 		f.Capture(func(e ftrace.Events) {
-			for _, e := range e {
-				fmt.Println(e.String())
-			}
+			events = append(events, e...)
 		})
+
 		f.Disable()
+
+		sort.Stable(ftrace.EventsByTime{events})
+
+		buf := bytes.NewBuffer(nil)
+		fmt.Fprintf(buf, "# tracer: nop\n")
+		for _, e := range events {
+			fmt.Fprintf(buf, "%s\n", e)
+		}
+
+		tj := traceJson{
+			TraceEvents:       usertrace.TraceEntries,
+			SystemTraceEvents: buf.String(),
+		}
+
+		f, err := os.Create("trace.json")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error opening trace.json: %s\n", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+
+		enc := json.NewEncoder(f)
+		err = enc.Encode(tj)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error writing trace.json: %s\n", err)
+			os.Exit(1)
+		}
 	} else {
 		var events ftrace.Events
 
@@ -233,6 +273,11 @@ func do_main() error {
 	}
 
 	return err
+}
+
+type traceJson struct {
+	TraceEvents       []usertrace.TraceEntry `json:"traceEvents"`
+	SystemTraceEvents string                 `json:"systemTraceEvents"`
 }
 
 func main() {

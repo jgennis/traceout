@@ -16,6 +16,7 @@ package ftrace
 
 import (
 	"fmt"
+	"github.com/google/traceout/usertrace"
 	"reflect"
 	"strconv"
 	"strings"
@@ -89,14 +90,18 @@ func (f *Ftrace) Disable() error {
 }
 
 func (f *Ftrace) Clear() error {
+	defer usertrace.TraceCall("Ftrace.Clear")()
 	return f.fp.WriteFtraceFile("trace", []byte(""))
 }
 
 func (f *Ftrace) ReadKernelTrace() ([]byte, error) {
+	defer usertrace.TraceCall("Ftrace.ReadKernelTrace")()
 	return f.fp.ReadFtraceFile("trace")
 }
 
 func (f *Ftrace) PrepareCapture(cpus int, doneCh <-chan bool) error {
+	defer usertrace.TraceCall("Ftrace.PrepareCapture")()
+
 	f.selectCases = []reflect.SelectCase{
 		reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
@@ -120,6 +125,8 @@ func (f *Ftrace) PrepareCapture(cpus int, doneCh <-chan bool) error {
 }
 
 func (f *Ftrace) Capture(callback func(Events)) {
+	defer usertrace.TraceCall("Ftrace.Capture")()
+
 	eventArrayType := reflect.TypeOf(Events{})
 
 	for len(f.selectCases) > 1 {
@@ -133,7 +140,9 @@ func (f *Ftrace) Capture(callback func(Events)) {
 		}
 		if recv.Type() == eventArrayType {
 			events := recv.Interface().(Events)
+			usertrace.TraceBegin("callback")
 			callback(events)
+			usertrace.TraceEnd()
 		}
 	}
 }
@@ -183,5 +192,19 @@ func (f *Ftrace) kernelSymbol(addr uint64) string {
 			f.cachedKallsyms[a] = strings.Replace(v[2], "\t", " ", -1)
 		}
 	}
-	return f.cachedKallsyms[addr]
+
+	sym, ok := f.cachedKallsyms[addr]
+	if !ok {
+		// This should probably not be a linear search
+		var maxSymAddr uint64
+		for symAddr := range f.cachedKallsyms {
+			if maxSymAddr < symAddr && symAddr < addr {
+				maxSymAddr = symAddr
+			}
+		}
+
+		sym = f.cachedKallsyms[maxSymAddr]
+	}
+
+	return sym
 }

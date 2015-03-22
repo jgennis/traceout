@@ -24,6 +24,7 @@ import (
 
 	"github.com/google/traceout/ftrace/cparse"
 	"github.com/google/traceout/ftrace/cprintf"
+	"github.com/google/traceout/usertrace"
 )
 
 type EventType struct {
@@ -112,6 +113,8 @@ func (etype *EventType) finishNewType() {
 }
 
 func (etype *EventType) DecodeEvent(data []byte, cpu int, when uint64) (*Event, error) {
+	defer usertrace.TraceCall("EventType.DecodeEvent")()
+
 	var e Event
 	e.Cpu = cpu
 	e.When = when
@@ -123,6 +126,13 @@ func (etype *EventType) DecodeEvent(data []byte, cpu int, when uint64) (*Event, 
 		e.values[i].field = &etype.fields[i]
 		e.values[i].contents = data[f.offset : f.offset+f.size]
 	}
+
+	// Special case when the last field has size 0. In this case we treat it as a buffer extending
+	// to the end of the event data.
+	if n := len(etype.fields); n > 0 && etype.fields[n-1].size == 0 {
+		e.values[n-1].contents = data[etype.fields[n-1].offset:]
+	}
+
 	e.etype = etype
 	e.contents = data
 
@@ -353,7 +363,11 @@ func (etype *EventType) Format(e Event) string {
 	if !v.IsString() {
 		return "formatter expected string, got " + v.Dump()
 	}
-	return v.AsString()
+	vStr := strings.TrimRight(v.AsString(), " \n\t")
+	if etype.name == "print" {
+		return vStr
+	}
+	return fmt.Sprintf("%s: %s", etype.name, vStr)
 }
 
 func (v eventFieldValue) DecodeUint() uint64 {

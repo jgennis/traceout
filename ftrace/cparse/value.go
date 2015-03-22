@@ -318,6 +318,7 @@ var intTypes = map[string]intType{
 	"char":                   intCharType,
 	"signed char":            intCharType,
 	"unsigned char":          intUCharType,
+	"void":                   intUCharType,
 	"short":                  intShortType,
 	"signed short":           intShortType,
 	"short int":              intShortType,

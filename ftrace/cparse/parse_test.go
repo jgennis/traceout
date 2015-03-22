@@ -65,6 +65,7 @@ var operatorParseTests = []parseTest{
 	{"a,b", "a, b"},
 	{"{a}", "{a}"},
 	{"(int) a", "(int32)a"},
+	{"(void*) a", "(uint64)a"},
 	{"(a)-b", "(a - b)"},
 	{"(t)-b", "(int32)(-b)"},
 	{"f (a)", "f(a)"},

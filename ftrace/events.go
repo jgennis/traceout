@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/google/traceout/usertrace"
 	"time"
 )
 
@@ -63,6 +64,8 @@ func (f *Ftrace) getEvents(cpu int, doneCh <-chan bool) (<-chan Events, error) {
 	}
 
 	go func() {
+		defer usertrace.TraceCall(fmt.Sprintf("capture cpu %d", cpu))()
+
 		defer close(rawDoneCh)
 		defer close(eventCh)
 
@@ -89,6 +92,8 @@ func (f *Ftrace) getEvents(cpu int, doneCh <-chan bool) (<-chan Events, error) {
 }
 
 func (f *Ftrace) decodePage(cpu int, data []byte) (events Events, err error) {
+	defer usertrace.TraceCall("Ftrace.decodePage")()
+
 	page, err := f.pageHeader.DecodeEvent(data, 0, 0)
 	if err != nil {
 		return nil, err
@@ -104,7 +109,9 @@ func (f *Ftrace) decodePage(cpu int, data []byte) (events Events, err error) {
 	fullData := data[0 : pageOffset+pageLen]
 	data = data[pageOffset : pageOffset+pageLen]
 
+	done := usertrace.TraceCall("alloc Events")
 	events = make(Events, 0, 64)
+	done()
 
 	var lazyErr error
 dataLoop:
@@ -141,7 +148,13 @@ dataLoop:
 			}
 
 			if len(data) < dataLen || dataLen < 2 {
-				err = BadEventHeader{fmt.Sprintf("Not enough data (%d, 0x%x) for len (%d, 0x%x) pageLen %x pageOffset+pageLen %x", len(data), len(data), dataLen, dataLen, pageLen, pageOffset+pageLen), fullData, offset}
+				err = BadEventHeader{
+					fmt.Sprintf("Not enough data (%d, 0x%x) for len (%d, 0x%x) pageLen %x "+
+						"pageOffset+pageLen %x", len(data), len(data), dataLen, dataLen, pageLen,
+						pageOffset+pageLen),
+					fullData,
+					offset,
+				}
 				return
 			}
 
@@ -163,7 +176,9 @@ dataLoop:
 				continue
 			}
 			event.ftrace = f
+			done := usertrace.TraceCall("append event")
 			events = append(events, event)
+			done()
 
 		case typeLen == entryTypePadding:
 			if timeDelta == 0 {
@@ -209,9 +224,9 @@ type Event struct {
 }
 
 func (e Event) String() string {
-	return fmt.Sprintf("%16s-%-5d [%03d] %s %6d.%06d: %s: %s",
+	return fmt.Sprintf("%16s-%-5d [%03d] %s %6d.%06d: %s",
 		e.ProcessName(), e.Pid, e.Cpu, e.FlagChars(), e.Seconds(), e.Microseconds(),
-		e.etype.name, e.etype.Format(e))
+		e.etype.Format(e))
 }
 
 func (e Event) Seconds() int {

@@ -125,7 +125,7 @@ func (p *parser) parseSubExpression(l *intermediateList, endToken tokenType) (in
 		l.replace(i, 1, newConstantExpressionFromString(t.val))
 	}
 
-	// replace all symbol tokens variableExpression or typeExpression
+	// replace all symbol tokens with variableExpression or typeExpression
 	// TODO: array subscripts and TODO: postfix increments
 	for {
 		i, t := l.findToken(0, []tokenType{tokenSymbol})
@@ -158,7 +158,17 @@ func (p *parser) parseSubExpression(l *intermediateList, endToken tokenType) (in
 			if err != nil {
 				return -1, err
 			}
-			l.replace(i, tokensUsed, newTypeExpression(t))
+			var numIndirects int
+			for ; ; numIndirects++ {
+				t := l.token(i + tokensUsed + numIndirects)
+				if t.typ != tokenMult {
+					break
+				}
+			}
+			if numIndirects > 0 {
+				t = intULongLongType
+			}
+			l.replace(i, tokensUsed+numIndirects, newTypeExpression(t))
 		} else {
 			v := p.scope.GetVariable(t.val)
 			ve := newVariableExpression(v, t.val)
